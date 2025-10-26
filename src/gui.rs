@@ -54,7 +54,10 @@ impl MyApp {
     }
 
     fn load_texture(&mut self, image_path: &str, ctx: &egui::Context) {
-        if let Some(asset) = Assets::get(image_path) {
+        // Remove the "images/" prefix if it exists, as RustEmbed uses the folder name as the root.
+        let asset_path = image_path.strip_prefix("images/").unwrap_or(image_path);
+
+        if let Some(asset) = Assets::get(asset_path) {
             if let Ok(decoded) = image::load_from_memory(&asset.data) {
                 let image = decoded.to_rgba8();
                 let (width, height) = image.dimensions();
