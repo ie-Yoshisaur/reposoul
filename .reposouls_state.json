@@ -1,9 +1,0 @@
-{
-  "branches": {
-    "main": {
-      "name": "main",
-      "last_notified_sha": "84f664dcf6a494f80da97226d90da37e75fa39ff",
-      "last_notified_status": "images/CI PIPELINE GREENED.png"
-    }
-  }
-}

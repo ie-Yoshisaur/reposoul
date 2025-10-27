@@ -22,7 +22,6 @@ pub struct MonitorState {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MonitoredBranch {
-    pub name: String,
     pub last_notified_sha: String,
     pub last_notified_status: String,
 }
@@ -107,7 +106,6 @@ pub fn run(gui_sender: Sender<String>, owner: String, repo: String) {
 
                             // Always update the state.
                             let new_branch_state = MonitoredBranch {
-                                name: branch_name.clone(),
                                 last_notified_sha: latest_sha,
                                 last_notified_status: new_status,
                             };
