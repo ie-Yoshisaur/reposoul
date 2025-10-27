@@ -2,8 +2,8 @@
   "branches": {
     "main": {
       "name": "main",
-      "last_notified_sha": "a9d3ae7e868bce43c8d1a1f83170b0158fb54c42",
-      "last_notified_status": "images/CI PIPELINE FAILED.png"
+      "last_notified_sha": "43c2f51919aa311f0312b9cf7819a195fce11b64",
+      "last_notified_status": "images/CI PIPELINE GREENED.png"
     }
   }
 }
