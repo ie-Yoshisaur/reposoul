@@ -2,7 +2,7 @@
   "branches": {
     "main": {
       "name": "main",
-      "last_notified_sha": "dbfd60b286061272addc2e9465f8073af02d8795",
+      "last_notified_sha": "a9d3ae7e868bce43c8d1a1f83170b0158fb54c42",
       "last_notified_status": "images/CI PIPELINE FAILED.png"
     }
   }
