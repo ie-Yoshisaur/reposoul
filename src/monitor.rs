@@ -90,15 +90,22 @@ pub fn run(gui_sender: Sender<String>, owner: String, repo: String) {
                         let new_status = github::get_branch_status_image(&owner, &repo, branch_name).await;
 
                         let current_branch_state = state.branches.get(branch_name);
+                        let is_new_branch = current_branch_state.is_none();
                         let has_new_status = match current_branch_state {
                             Some(b) => b.last_notified_sha != latest_sha || b.last_notified_status != new_status,
-                            None => true, // It's a new branch
+                            None => true, // It's a new branch, so we treat it as having a new status to record it.
                         };
 
                         if has_new_status && !new_status.is_empty() {
-                            println!("Monitor: Status change for branch \"{}\": {}", branch_name, new_status);
-                            gui_sender.send(new_status.clone()).unwrap();
+                            // Only send a notification if the branch is not new.
+                            if !is_new_branch {
+                                println!("Monitor: Status change for branch \"{}\": {}", branch_name, new_status);
+                                gui_sender.send(new_status.clone()).unwrap();
+                            } else {
+                                println!("Monitor: New branch \"{}\" detected. Will notify on next status change.", branch_name);
+                            }
 
+                            // Always update the state.
                             let new_branch_state = MonitoredBranch {
                                 name: branch_name.clone(),
                                 last_notified_sha: latest_sha,
