@@ -1,80 +1,118 @@
+// src/monitor.rs
+
+//! The core background service and state management for the application.
+
 use crate::github;
-use std::collections::HashSet;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::{Duration, Instant};
 
+const STATE_FILE_NAME: &str = ".reposouls_state.json";
 const POLLING_INTERVAL_SECONDS: u64 = 60;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MonitoredBranch {
-    pub name: String,
-    pub last_status_image: String,
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct MonitorState {
+    // Key: branch name
+    pub branches: HashMap<String, MonitoredBranch>,
 }
 
-#[derive(Debug, Default)]
-pub struct MonitorState {
-    pub branches: HashSet<MonitoredBranch>,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MonitoredBranch {
+    pub name: String,
+    pub last_notified_sha: String,
+    pub last_notified_status: String,
 }
+
+// --- State Management ---
+
+fn load_state() -> Result<MonitorState, String> {
+    if !Path::new(STATE_FILE_NAME).exists() {
+        return Ok(MonitorState::default());
+    }
+    let content = fs::read_to_string(STATE_FILE_NAME).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map_err(|e| e.to_string())
+}
+
+fn save_state(state: &MonitorState) -> Result<(), String> {
+    let content = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
+    fs::write(STATE_FILE_NAME, content).map_err(|e| e.to_string())
+}
+
+// --- Main Service Logic ---
 
 pub fn run(gui_sender: Sender<String>, owner: String, repo: String) {
     println!("Monitor: Starting background thread for {}/{}", owner, repo);
     thread::spawn(move || {
-        let mut state = MonitorState::default();
-        let mut last_poll_time = Instant::now()
-            .checked_sub(Duration::from_secs(POLLING_INTERVAL_SECONDS))
-            .unwrap();
+        let mut state = load_state().unwrap_or_else(|e| {
+            eprintln!("Monitor: Failed to load state, starting fresh: {}", e);
+            MonitorState::default()
+        });
+
+        let mut last_poll_time = Instant::now().checked_sub(Duration::from_secs(POLLING_INTERVAL_SECONDS)).unwrap();
 
         loop {
             if last_poll_time.elapsed() >= Duration::from_secs(POLLING_INTERVAL_SECONDS) {
                 println!("Monitor: Polling GitHub for updates...");
                 let rt = tokio::runtime::Runtime::new().unwrap();
+                let client = match github::build_client() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("Monitor: Failed to build GitHub client: {}", e);
+                        thread::sleep(Duration::from_secs(POLLING_INTERVAL_SECONDS));
+                        continue;
+                    }
+                };
+
+                let mut state_changed = false;
 
                 rt.block_on(async {
-                    let remote_branch_names: HashSet<String> =
-                        match github::get_all_branch_names(&owner, &repo).await {
-                            Ok(names) => names.into_iter().collect(),
-                            Err(e) => {
-                                eprintln!("Monitor: Error fetching branches: {}", e);
-                                return;
-                            }
+                    // Step 1: Sync branch list
+                    let remote_branch_names: Vec<String> = match github::get_all_branch_names(&owner, &repo).await {
+                        Ok(names) => names,
+                        Err(e) => {
+                            eprintln!("Monitor: Error fetching branches: {}", e);
+                            return;
+                        }
+                    };
+                    state.branches.retain(|k, _| remote_branch_names.contains(k));
+
+                    // Step 2: Check status for all branches
+                    for branch_name in &remote_branch_names {
+                        let latest_sha = match github::get_latest_commit_sha(&client, &owner, &repo, branch_name).await {
+                            Some(sha) => sha,
+                            None => continue, // Branch might have been deleted just now
                         };
 
-                    let current_branch_names: HashSet<String> =
-                        state.branches.iter().map(|b| b.name.clone()).collect();
+                        let new_status = github::get_branch_status_image(&owner, &repo, branch_name).await;
 
-                    for name in remote_branch_names.difference(&current_branch_names) {
-                        println!("Monitor: Detected new branch \"{}\"", name);
-                        state.branches.insert(MonitoredBranch {
-                            name: name.clone(),
-                            last_status_image: "".to_string(),
-                        });
-                    }
+                        let current_branch_state = state.branches.get(branch_name);
+                        let has_new_status = match current_branch_state {
+                            Some(b) => b.last_notified_sha != latest_sha || b.last_notified_status != new_status,
+                            None => true, // It's a new branch
+                        };
 
-                    state
-                        .branches
-                        .retain(|b| remote_branch_names.contains(&b.name));
+                        if has_new_status && !new_status.is_empty() {
+                            println!("Monitor: Status change for branch \"{}\": {}", branch_name, new_status);
+                            gui_sender.send(new_status.clone()).unwrap();
 
-                    let mut updated_branches = HashSet::new();
-                    for mut branch in state.branches.drain() {
-                        let new_status_image =
-                            github::get_branch_status_image(&owner, &repo, &branch.name).await;
-
-                        if new_status_image != branch.last_status_image
-                            && !new_status_image.is_empty()
-                        {
-                            println!(
-                                "Monitor: Status change for branch \"{}\": {}",
-                                branch.name, new_status_image
-                            );
-                            branch.last_status_image = new_status_image.clone();
-                            gui_sender.send(new_status_image).unwrap();
+                            let new_branch_state = MonitoredBranch {
+                                name: branch_name.clone(),
+                                last_notified_sha: latest_sha,
+                                last_notified_status: new_status,
+                            };
+                            state.branches.insert(branch_name.clone(), new_branch_state);
+                            state_changed = true;
                         }
-                        updated_branches.insert(branch);
                     }
-                    state.branches = updated_branches;
                 });
 
+                if state_changed {
+                    save_state(&state).unwrap_or_else(|e| eprintln!("Failed to save state: {}", e));
+                }
                 last_poll_time = Instant::now();
             }
 

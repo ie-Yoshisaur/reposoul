@@ -114,7 +114,7 @@ pub async fn get_branch_status_image(owner: &str, repo: &str, branch: &str) -> S
 enum CiStatus { Success, Failure, Pending }
 
 /// Builds a reqwest client with standard GitHub API headers.
-fn build_client() -> Result<reqwest::Client, Box<dyn Error>> {
+pub fn build_client() -> Result<reqwest::Client, Box<dyn Error>> {
     let token = env::var("GITHUB_TOKEN").map_err(|_| "GITHUB_TOKEN not set")?;
     let mut headers = HeaderMap::new();
     headers.insert(ACCEPT, HeaderValue::from_str("application/vnd.github.v3+json")?);
@@ -124,7 +124,7 @@ fn build_client() -> Result<reqwest::Client, Box<dyn Error>> {
 }
 
 /// Fetches the latest commit SHA for a given branch.
-async fn get_latest_commit_sha(client: &reqwest::Client, owner: &str, repo: &str, branch: &str) -> Option<String> {
+pub async fn get_latest_commit_sha(client: &reqwest::Client, owner: &str, repo: &str, branch: &str) -> Option<String> {
     let branch_url = format!("https://api.github.com/repos/{}/{}/branches/{}", owner, repo, branch);
     client.get(&branch_url).send().await.ok()?.json::<BranchInfo>().await.ok().map(|b| b.commit.sha)
 }
