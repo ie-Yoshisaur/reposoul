@@ -100,12 +100,17 @@ impl eframe::App for MyApp {
                 }
             }
             AppState::Displaying => {
-                if self.animation_time >= 3.0 {
-                    // Display for 3 seconds
-                    self.state = AppState::FadingOut;
-                    self.animation_time = 0.0;
+                // Display for a minimum of 2 seconds, then fade out on any user activity.
+                if self.animation_time < 2.0 {
+                    1.0 // Stay fully visible
+                } else {
+                    // After 2 seconds, check for any input events.
+                    if !ctx.input(|i| i.events.is_empty()) {
+                        self.state = AppState::FadingOut;
+                        self.animation_time = 0.0;
+                    }
+                    1.0 // Remain visible until input is detected
                 }
-                1.0
             }
             AppState::FadingOut => {
                 if self.animation_time >= 0.5 {
