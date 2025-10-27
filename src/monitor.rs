@@ -12,7 +12,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const STATE_FILE_NAME: &str = ".reposouls_state.json";
-const POLLING_INTERVAL_SECONDS: u64 = 60;
+const POLLING_INTERVAL_SECONDS: u64 = 10;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct MonitorState {
@@ -51,7 +51,9 @@ pub fn run(gui_sender: Sender<String>, owner: String, repo: String) {
             MonitorState::default()
         });
 
-        let mut last_poll_time = Instant::now().checked_sub(Duration::from_secs(POLLING_INTERVAL_SECONDS)).unwrap();
+        let mut last_poll_time = Instant::now()
+            .checked_sub(Duration::from_secs(POLLING_INTERVAL_SECONDS))
+            .unwrap();
 
         loop {
             if last_poll_time.elapsed() >= Duration::from_secs(POLLING_INTERVAL_SECONDS) {
@@ -125,3 +127,4 @@ pub fn run(gui_sender: Sender<String>, owner: String, repo: String) {
         }
     });
 }
+
