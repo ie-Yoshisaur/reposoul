@@ -1,0 +1,42 @@
+name: Controllable CI for Testing
+
+on:
+  push:
+    branches: [ '**' ]
+  pull_request:
+    branches: [ '**' ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Check for fail condition in message
+      id: check_message
+      run: |
+        TRIGGER_MESSAGE=="${{ github.event.head_commit.message }}"
+        
+        echo "Checking message: $TRIGGER_MESSAGE"
+        if echo "$TRIGGER_MESSAGE" | grep -q "\[CI-FAIL\]"; then
+          echo "-> Found [CI-FAIL]. This build will be forced to fail."
+          echo "fail=true" >> $GITHUB_OUTPUT
+        else
+          echo "-> No [CI-FAIL] found. This build will proceed normally."
+          echo "fail=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Run standard check process
+      run: cargo check
+
+    - name: Force failure if requested
+      if: steps.check_message.outputs.fail == 'true'
+      run: |
+        echo "Intentionally failing the build as requested."
+        exit 1
